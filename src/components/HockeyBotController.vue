@@ -13,8 +13,7 @@ const SEND_EVERY_MS = 50 // o app oficial manda dezenas de pacotes por segundo
 const STOP_REPEATS = 2 // o app enviou "0,0" duas vezes ao soltar o joystick
 const DEADZONE = 5 // abaixo disso (em %) consideramos o joystick solto
 
-// ---------- Identificação do carrinho (valores lidos no nRF Connect) ----------
-const NAME_PREFIX = 'HOCKEYBOT' // o filtro diferencia maiúsculas de minúsculas
+// ---------- UUIDs do carrinho (lidos no nRF Connect) ----------
 const SERVICE_UUID = 'dacabf1f-5f2e-4d16-b8f8-13bbaaec1349'
 const CHARACTERISTIC_UUID = 'dacabf1f-5f2e-4d16-b8f8-13bbaaec5781' // Write Without Response
 
@@ -42,12 +41,12 @@ async function connect() {
   error.value = ''
   status.value = 'connecting'
   try {
-    const options = {
-      filters: [{ namePrefix: NAME_PREFIX }],
+    // Sem filtro por nome: o nome pode ser alterado no app da RoboCore.
+    // O usuário escolhe o carrinho na lista, e só ele precisa ter o serviço abaixo.
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
       optionalServices: [SERVICE_UUID],
-    }
-
-    device = await navigator.bluetooth.requestDevice(options)
+    })
     device.addEventListener('gattserverdisconnected', onDisconnected)
     deviceName.value = device.name || 'Dispositivo sem nome'
 
