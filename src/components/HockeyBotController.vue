@@ -13,35 +13,10 @@ const SEND_EVERY_MS = 50 // o app oficial manda dezenas de pacotes por segundo
 const STOP_REPEATS = 2 // o app enviou "0,0" duas vezes ao soltar o joystick
 const DEADZONE = 5 // abaixo disso (em %) consideramos o joystick solto
 
-// ---------- Configuração (UUIDs precisam ser confirmados no nRF Connect) ----------
-const DEFAULTS = {
-  namePrefix: 'HockeyBot',
-  showAll: false,
-  serviceUuid: 'ffe0',
-  charUuid: 'ffe1',
-}
-const config = reactive({ ...DEFAULTS, ...loadConfig() })
-
-function loadConfig() {
-  try {
-    return JSON.parse(localStorage.getItem('hockeybot-config') || '{}')
-  } catch {
-    return {}
-  }
-}
-function saveConfig() {
-  try {
-    localStorage.setItem('hockeybot-config', JSON.stringify(config))
-  } catch {
-    /* sem armazenamento: segue sem salvar */
-  }
-}
-
-// "ffe0" -> 0xffe0 (UUID curto) | "6e400001-b5a3-..." -> string completa
-function parseUuid(value) {
-  const v = value.trim().toLowerCase().replace(/^0x/, '')
-  return /^[0-9a-f]{4}$/.test(v) ? parseInt(v, 16) : v
-}
+// ---------- Identificação do carrinho (valores lidos no nRF Connect) ----------
+const NAME_PREFIX = 'HOCKEYBOT' // o filtro diferencia maiúsculas de minúsculas
+const SERVICE_UUID = 'dacabf1f-5f2e-4d16-b8f8-13bbaaec1349'
+const CHARACTERISTIC_UUID = 'dacabf1f-5f2e-4d16-b8f8-13bbaaec5781' // Write Without Response
 
 // ---------- Estado ----------
 const status = ref('idle') // idle | connecting | connected
@@ -65,21 +40,20 @@ const encoder = new TextEncoder()
 // ---------- Conexão ----------
 async function connect() {
   error.value = ''
-  saveConfig()
   status.value = 'connecting'
   try {
-    const service = parseUuid(config.serviceUuid)
-    const options = config.showAll || !config.namePrefix.trim()
-      ? { acceptAllDevices: true, optionalServices: [service] }
-      : { filters: [{ namePrefix: config.namePrefix.trim() }], optionalServices: [service] }
+    const options = {
+      filters: [{ namePrefix: NAME_PREFIX }],
+      optionalServices: [SERVICE_UUID],
+    }
 
     device = await navigator.bluetooth.requestDevice(options)
     device.addEventListener('gattserverdisconnected', onDisconnected)
     deviceName.value = device.name || 'Dispositivo sem nome'
 
     const server = await device.gatt.connect()
-    const svc = await server.getPrimaryService(service)
-    characteristic = await svc.getCharacteristic(parseUuid(config.charUuid))
+    const svc = await server.getPrimaryService(SERVICE_UUID)
+    characteristic = await svc.getCharacteristic(CHARACTERISTIC_UUID)
 
     status.value = 'connected'
     startLoop()
@@ -93,10 +67,10 @@ async function connect() {
 function explain(e) {
   const msg = e?.message || String(e)
   if (e?.name === 'NotFoundError' && /service/i.test(msg)) {
-    return 'Serviço não encontrado. Confira o UUID do serviço no nRF Connect (aba Client).'
+    return 'Serviço não encontrado. Este carrinho não parece ser um Hockey Bot compatível.'
   }
   if (e?.name === 'NotFoundError' && /characteristic/i.test(msg)) {
-    return 'Característica não encontrada. Use o UUID da característica com a propriedade Write.'
+    return 'Característica de escrita não encontrada no carrinho.'
   }
   if (e?.name === 'SecurityError') {
     return 'A Web Bluetooth exige HTTPS (ou localhost).'
@@ -310,32 +284,5 @@ onBeforeUnmount(() => {
     <p class="max-w-sm text-center text-xs text-[#5B6B77]">
       No computador, use W A S D ou as setas do teclado.
     </p>
-
-    <!-- UUIDs: precisam bater com os do carrinho -->
-    <details class="w-full max-w-sm rounded-lg bg-white p-4 text-sm">
-      <summary class="cursor-pointer font-semibold">Configuração Bluetooth</summary>
-      <div class="mt-3 flex flex-col gap-3">
-        <label class="flex flex-col gap-1">
-          Prefixo do nome do carrinho
-          <input v-model="config.namePrefix" class="rounded border border-[#B8C7D1] px-3 py-2" placeholder="HockeyBot" />
-        </label>
-        <label class="flex items-center gap-2">
-          <input v-model="config.showAll" type="checkbox" />
-          Mostrar todos os dispositivos
-        </label>
-        <label class="flex flex-col gap-1">
-          UUID do serviço
-          <input v-model="config.serviceUuid" class="rounded border border-[#B8C7D1] px-3 py-2 font-mono" :disabled="connected" />
-        </label>
-        <label class="flex flex-col gap-1">
-          UUID da característica de escrita
-          <input v-model="config.charUuid" class="rounded border border-[#B8C7D1] px-3 py-2 font-mono" :disabled="connected" />
-        </label>
-        <p class="text-xs text-[#5B6B77]">
-          Aceita UUID curto (ex.: ffe0) ou completo. Pegue os valores no nRF Connect, na característica
-          que tem a propriedade Write Without Response.
-        </p>
-      </div>
-    </details>
   </main>
 </template>
