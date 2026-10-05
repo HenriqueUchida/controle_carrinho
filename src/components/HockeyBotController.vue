@@ -5,8 +5,8 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
   Protocolo (descoberto no Wireshark), texto ASCII via Write Command:
     "velocidade,ângulo"   velocidade 0–100, ângulo 0–360 (90 = frente, 270 = trás)
     "0,0"                 parada
-  Confirmados: 100,90 (frente) e 100,270 (trás).
-  Supostos (ainda não validados): 180 = esquerda, 0 = direita.
+  Confirmados: 100,90 (frente), 100,270 (trás) e 100,360 (direita).
+  Suposto (ainda não validado): 100,180 = esquerda.
 
   Dois joysticks: o da esquerda controla avanço/recuo (eixo Y) e o da direita controla
   a direção (eixo X). Os dois eixos são combinados em um único vetor e convertidos para
@@ -22,8 +22,8 @@ const LOGO_URL = `${import.meta.env.BASE_URL}senac-logo.png` // coloque o arquiv
 const SEND_EVERY_MS = 50 // o app oficial manda dezenas de pacotes por segundo
 const STOP_REPEATS = 2 // o app enviou "0,0" duas vezes ao soltar o joystick
 const DEADZONE = 5 // abaixo disso (em %) consideramos o joystick solto
-const TRAVEL_THROTTLE = 80 // curso do botão (px) no joystick vertical
-const TRAVEL_STEER = 104 // curso do botão (px) no joystick horizontal
+const TRAVEL_THROTTLE = 60 // curso do botão (px) no joystick vertical
+const TRAVEL_STEER = 100 // curso do botão (px) no joystick horizontal
 
 // ---------- UUIDs do carrinho (lidos no nRF Connect) ----------
 const SERVICE_UUID = 'dacabf1f-5f2e-4d16-b8f8-13bbaaec1349'
@@ -201,7 +201,8 @@ function updateCommand() {
   const t = padThrottle.value || keyThrottle.value
   const s = padSteer.value || keySteer.value
   const speed = Math.round(Math.min(1, Math.hypot(s, t)) * 100)
-  const angle = Math.round(((Math.atan2(t, s) * 180) / Math.PI + 360) % 360)
+  let angle = Math.round(((Math.atan2(t, s) * 180) / Math.PI + 360) % 360)
+  if (angle === 0) angle = 360 // o app oficial manda 360 para a direita, nunca 0
   setCommand(speed, angle)
 }
 
@@ -277,55 +278,24 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main
-    class="fixed inset-0 grid select-none grid-cols-[auto_1fr_auto] items-center gap-4 overflow-hidden bg-[#EAF2F6] px-6 text-[#14212B]"
-  >
-    <!-- Logo -->
-    <div class="absolute inset-x-0 top-3 flex justify-center">
-      <img v-if="logoOk" :src="LOGO_URL" alt="Senac" class="h-10 object-contain" @error="logoOk = false" />
-      <span v-else class="text-xl font-bold text-[#004A8D]">Senac</span>
-    </div>
+  <main class="fixed inset-0 grid select-none grid-rows-[auto_1fr_auto] overflow-hidden bg-[#EAF2F6] text-[#14212B]">
+    <!-- Cabeçalho: nome, status e botões -->
+    <header class="flex items-center justify-between gap-4 border-b border-[#004A8D]/15 bg-white px-4 py-2">
+      <div class="min-w-0">
+        <h1 class="text-lg font-bold leading-tight">Hockey Bot</h1>
+        <p class="truncate text-xs" :class="connected ? 'text-[#004A8D]' : 'text-[#5B6B77]'">
+          <template v-if="connected">
+            Conectado a {{ deviceName }}<span v-if="battery !== null"> · bateria {{ battery }}%</span>
+          </template>
+          <template v-else-if="status === 'connecting'">Conectando…</template>
+          <template v-else>Desconectado</template>
+        </p>
+      </div>
 
-    <!-- Joystick esquerdo: avançar e recuar -->
-    <div
-      class="relative h-60 w-24 touch-none rounded-full border-4 border-[#004A8D] bg-white transition-opacity"
-      :class="connected ? 'opacity-100' : 'opacity-50'"
-      role="slider"
-      aria-label="Avançar e recuar"
-      @pointerdown="onPadDown($event, 'throttle')"
-      @pointermove="onPadMove($event, 'throttle')"
-      @pointerup="onPadUp('throttle')"
-      @pointercancel="onPadUp('throttle')"
-    >
-      <div class="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-[#C8362B]/60"></div>
-      <div
-        class="absolute left-1/2 top-1/2 h-20 w-20 rounded-full bg-[#14212B] shadow-md"
-        :style="{ transform: `translate(-50%, calc(-50% + ${knobY}px))` }"
-      ></div>
-    </div>
-
-    <!-- Centro: status e controles -->
-    <section class="flex flex-col items-center gap-2 text-center">
-      <h1 class="text-xl font-bold">Hockey Bot</h1>
-      <p class="text-sm" :class="connected ? 'text-[#004A8D]' : 'text-[#5B6B77]'">
-        <template v-if="connected">
-          Conectado a {{ deviceName }}<span v-if="battery !== null"> · bateria {{ battery }}%</span>
-        </template>
-        <template v-else-if="status === 'connecting'">Conectando…</template>
-        <template v-else>Desconectado</template>
-      </p>
-
-      <p v-if="!supported" class="max-w-xs rounded-lg bg-[#C8362B]/10 p-2 text-xs text-[#8F2219]">
-        Este navegador não suporta Web Bluetooth. Use o Chrome ou o Edge no Android ou no computador.
-      </p>
-      <p v-if="error" class="max-w-xs rounded-lg bg-[#C8362B]/10 p-2 text-xs text-[#8F2219]" role="alert">
-        {{ error }}
-      </p>
-
-      <div class="flex gap-2">
+      <div class="flex shrink-0 gap-2">
         <button
           v-if="!connected"
-          class="rounded-full bg-[#004A8D] px-5 py-2 font-semibold text-white focus:outline-none focus-visible:ring-4 focus-visible:ring-[#004A8D]/40 disabled:opacity-50"
+          class="rounded-full bg-[#004A8D] px-5 py-1.5 text-sm font-semibold text-white focus:outline-none focus-visible:ring-4 focus-visible:ring-[#004A8D]/40 disabled:opacity-50"
           :disabled="!supported || status === 'connecting'"
           @click="connect"
         >
@@ -333,58 +303,83 @@ onBeforeUnmount(() => {
         </button>
         <button
           v-else
-          class="rounded-full border-2 border-[#004A8D] px-5 py-2 font-semibold text-[#004A8D] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#004A8D]/30"
+          class="rounded-full border-2 border-[#004A8D] px-5 py-1 text-sm font-semibold text-[#004A8D] focus:outline-none focus-visible:ring-4 focus-visible:ring-[#004A8D]/30"
           @click="disconnect"
         >
           Desconectar
         </button>
         <button
-          class="rounded-full bg-[#C8362B] px-5 py-2 font-bold text-white focus:outline-none focus-visible:ring-4 focus-visible:ring-[#C8362B]/40 disabled:opacity-40"
+          class="rounded-full bg-[#C8362B] px-5 py-1.5 text-sm font-bold text-white focus:outline-none focus-visible:ring-4 focus-visible:ring-[#C8362B]/40 disabled:opacity-40"
           :disabled="!connected"
           @click="resetControls"
         >
           Parar
         </button>
       </div>
+    </header>
 
-      <button
-        v-if="canFullscreen && !isFullscreen"
-        class="text-xs text-[#004A8D] underline"
-        @click="enterLandscape"
-      >
-        Tela cheia
-      </button>
-
-      <p class="text-xs text-[#5B6B77]">
-        Esquerda: avançar e recuar. Direita: virar.
-        <span class="hidden md:inline">No teclado, use W A S D.</span>
-      </p>
-      <p class="text-xs text-[#5B6B77]">
-        Último comando:
-        <code class="rounded bg-white px-1.5 py-0.5 font-mono text-[#14212B]">{{ lastSent }}</code>
-      </p>
-    </section>
-
-    <!-- Joystick direito: virar -->
-    <div
-      class="relative h-24 w-72 touch-none rounded-full border-4 border-[#004A8D] bg-white transition-opacity"
-      :class="connected ? 'opacity-100' : 'opacity-50'"
-      role="slider"
-      aria-label="Virar para a esquerda ou direita"
-      @pointerdown="onPadDown($event, 'steer')"
-      @pointermove="onPadMove($event, 'steer')"
-      @pointerup="onPadUp('steer')"
-      @pointercancel="onPadUp('steer')"
-    >
-      <div class="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-[#C8362B]/60"></div>
+    <!-- Corpo: joystick, logo no centro, joystick -->
+    <div class="grid grid-cols-[auto_1fr_auto] items-center gap-4 px-6">
+      <!-- Joystick esquerdo: avançar e recuar -->
       <div
-        class="absolute left-1/2 top-1/2 h-20 w-20 rounded-full bg-[#14212B] shadow-md"
-        :style="{ transform: `translate(calc(-50% + ${knobX}px), -50%)` }"
-      ></div>
+        class="relative h-52 w-24 touch-none rounded-full border-4 border-[#004A8D] bg-white transition-opacity"
+        :class="connected ? 'opacity-100' : 'opacity-50'"
+        role="slider"
+        aria-label="Avançar e recuar"
+        @pointerdown="onPadDown($event, 'throttle')"
+        @pointermove="onPadMove($event, 'throttle')"
+        @pointerup="onPadUp('throttle')"
+        @pointercancel="onPadUp('throttle')"
+      >
+        <div class="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-[#C8362B]/60"></div>
+        <div
+          class="absolute left-1/2 top-1/2 h-20 w-20 rounded-full bg-[#14212B] shadow-md"
+          :style="{ transform: `translate(-50%, calc(-50% + ${knobY}px))` }"
+        ></div>
+      </div>
+
+      <!-- Centro: logo do Senac -->
+      <section class="flex min-w-0 flex-col items-center gap-3 text-center">
+        <img v-if="logoOk" :src="LOGO_URL" alt="Senac" class="h-28 max-w-full object-contain" @error="logoOk = false" />
+        <span v-else class="text-5xl font-bold text-[#004A8D]">Senac</span>
+
+        <p v-if="!supported" class="max-w-xs rounded-lg bg-[#C8362B]/10 p-2 text-xs text-[#8F2219]">
+          Este navegador não suporta Web Bluetooth. Use o Chrome no Android.
+        </p>
+        <p v-if="error" class="max-w-xs rounded-lg bg-[#C8362B]/10 p-2 text-xs text-[#8F2219]" role="alert">
+          {{ error }}
+        </p>
+
+        <button v-if="canFullscreen && !isFullscreen" class="text-xs text-[#004A8D] underline" @click="enterLandscape">
+          Tela cheia
+        </button>
+        <p class="text-xs text-[#5B6B77]">
+          Último comando:
+          <code class="rounded bg-white px-1.5 py-0.5 font-mono text-[#14212B]">{{ lastSent }}</code>
+        </p>
+      </section>
+
+      <!-- Joystick direito: virar -->
+      <div
+        class="relative h-24 w-72 touch-none rounded-full border-4 border-[#004A8D] bg-white transition-opacity"
+        :class="connected ? 'opacity-100' : 'opacity-50'"
+        role="slider"
+        aria-label="Virar para a esquerda ou direita"
+        @pointerdown="onPadDown($event, 'steer')"
+        @pointermove="onPadMove($event, 'steer')"
+        @pointerup="onPadUp('steer')"
+        @pointercancel="onPadUp('steer')"
+      >
+        <div class="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-[#C8362B]/60"></div>
+        <div
+          class="absolute left-1/2 top-1/2 h-20 w-20 rounded-full bg-[#14212B] shadow-md"
+          :style="{ transform: `translate(calc(-50% + ${knobX}px), -50%)` }"
+        ></div>
+      </div>
     </div>
 
     <!-- Créditos -->
-    <p class="absolute inset-x-0 bottom-3 text-center text-xs text-[#5B6B77]">
+    <p class="py-2 text-center text-xs text-[#5B6B77]">
       Desenvolvido por
       <a :href="CREDIT_URL" target="_blank" rel="noopener" class="font-semibold text-[#004A8D] underline">{{ CREDIT_NAME }}</a>
     </p>
