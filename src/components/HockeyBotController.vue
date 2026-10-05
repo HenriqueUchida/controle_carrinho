@@ -22,6 +22,7 @@ const status = ref('idle') // idle | connecting | connected
 const deviceName = ref('')
 const error = ref('')
 const lastSent = ref('—')
+const battery = ref(null)
 const knob = reactive({ x: 0, y: 0 })
 const pad = ref(null)
 
@@ -45,7 +46,7 @@ async function connect() {
     // O usuário escolhe o carrinho na lista, e só ele precisa ter o serviço abaixo.
     device = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
-      optionalServices: [SERVICE_UUID],
+      optionalServices: [SERVICE_UUID, 'battery_service'],
     })
     device.addEventListener('gattserverdisconnected', onDisconnected)
     deviceName.value = device.name || 'Dispositivo sem nome'
@@ -54,12 +55,42 @@ async function connect() {
     const svc = await server.getPrimaryService(SERVICE_UUID)
     characteristic = await svc.getCharacteristic(CHARACTERISTIC_UUID)
 
+    // Sequência observada no app oficial: assina a bateria e manda "0,0" antes de mover
+    await subscribeBattery(server)
+    await write('0,0')
+    await write('0,0')
+
     status.value = 'connected'
     startLoop()
   } catch (e) {
     status.value = 'idle'
     if (e.name === 'NotFoundError' && /cancel/i.test(e.message)) return
     error.value = explain(e)
+  }
+}
+
+// O app oficial liga as notificações de bateria logo após conectar.
+// O firmware parece depender disso para aceitar os comandos de movimento.
+async function subscribeBattery(server) {
+  try {
+    const svc = await server.getPrimaryService('battery_service')
+    try {
+      const level = await svc.getCharacteristic('battery_level')
+      level.addEventListener('characteristicvaluechanged', (e) => {
+        battery.value = e.target.value.getUint8(0)
+      })
+      await level.startNotifications()
+    } catch {
+      /* sem Battery Level: segue */
+    }
+    try {
+      const levelStatus = await svc.getCharacteristic(0x2bed) // Battery Level Status
+      await levelStatus.startNotifications()
+    } catch {
+      /* sem Battery Level Status: segue */
+    }
+  } catch {
+    /* sem serviço de bateria: segue */
   }
 }
 
@@ -84,6 +115,7 @@ function disconnect() {
 function onDisconnected() {
   stopLoop()
   characteristic = null
+  battery.value = null
   status.value = 'idle'
   resetKnob()
 }
@@ -220,7 +252,9 @@ onBeforeUnmount(() => {
       <div>
         <h1 class="text-2xl font-bold">Hockey Bot</h1>
         <p class="text-sm" :class="connected ? 'text-[#1F5FA8]' : 'text-[#5B6B77]'">
-          <template v-if="connected">Conectado a {{ deviceName }}</template>
+          <template v-if="connected">
+            Conectado a {{ deviceName }}<span v-if="battery !== null"> · bateria {{ battery }}%</span>
+          </template>
           <template v-else-if="status === 'connecting'">Conectando…</template>
           <template v-else>Desconectado</template>
         </p>
