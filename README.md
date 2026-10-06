@@ -77,7 +77,7 @@ A velocidade vai de 0 a 100, e o ângulo é medido em graus (90 = frente, 270 = 
 
 **No iPhone**, instale o [Bluefy](https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055) na App Store e abra o endereço do projeto por ele. O Bluefy é um navegador gratuito que adiciona suporte à Web Bluetooth no iOS. Nele, a tela cheia e o travamento da rotação podem não funcionar. Se isso acontecer, basta girar o celular manualmente para a horizontal.
 
-Só um aplicativo pode se conectar ao carrinho por vez. Feche o aplicativo da RoboCore e o nRF Connect antes de conectar.
+Só um aplicativo pode se conectar ao carrinho por vez. Feche o aplicativo da RoboCore e antes de conectar.
 
 ## Estrutura
 
