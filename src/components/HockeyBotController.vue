@@ -16,7 +16,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 // ---------- Créditos ----------
 const CREDIT_NAME = 'Henrique Uchida'
 const CREDIT_URL = 'https://github.com/HenriqueUchida'
-const LOGO_URL = `${import.meta.env.BASE_URL}senac-logo.png` // coloque o arquivo em public/
+const LOGO_URL = `${import.meta.env.BASE_URL}senac-logo.png`
 
 // ---------- Ajustes ----------
 const SEND_EVERY_MS = 50 // o app oficial manda dezenas de pacotes por segundo
@@ -378,11 +378,6 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- Créditos -->
-    <p class="py-2 text-center text-xs text-[#5B6B77]">
-      Desenvolvido por
-      <a :href="CREDIT_URL" target="_blank" rel="noopener" class="font-semibold text-[#004A8D] underline">{{ CREDIT_NAME }}</a>
-    </p>
 
     <!-- Aviso em modo retrato -->
     <div
